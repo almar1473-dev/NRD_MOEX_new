@@ -1,0 +1,24 @@
+# Виртуальное окружение
+venv/
+__pycache__/
+*.pyc
+
+# Секреты
+.env
+
+# Логи
+*.log
+cron.log
+
+# Excel файлы (если с данными портфеля)
+*.xlsm
+*.xlsx
+
+# Файлы VS Code и мусор
+.vscode-server/
+.cache/
+.dotnet/
+.bash_history
+
+# Бэкапы (если есть)
+finance_parser_backup/
