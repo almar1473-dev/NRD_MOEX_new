@@ -108,7 +108,7 @@ def extract_issuer_name(bond_name):
         return ""
 
 def parse_nsd_news_by_isin(isin, from_date, to_date):
-    """Парсинг новостей с сайта НРД по ISIN с поддержкой сессий"""
+    """Парсинг новостей с сайта НРД по ISIN - возвращает сырой HTML"""
     if not isin:
         return "❌ ISIN отсутствует"
 
@@ -116,81 +116,19 @@ def parse_nsd_news_by_isin(isin, from_date, to_date):
         encoded_isin = requests.utils.quote(isin)
         url = f"https://nsddata.ru/ru/news?text={encoded_isin}&from={from_date}&to={to_date}"
 
-        # Создаем сессию
-        session = requests.Session()
-        
-        # Сначала заходим на главную страницу чтобы получить cookies
-        main_url = "https://nsddata.ru/"
-        headers_main = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        }
-        
-        # Делаем запрос на главную для получения cookies
-        try:
-            session.get(main_url, headers=headers_main, timeout=10)
-            time.sleep(1)  # Небольшая пауза
-        except:
-            pass  # Игнорируем ошибки на этом этапе
-        
-        # Теперь делаем основной запрос
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Cache-Control': 'max-age=0',
-            'Referer': 'https://nsddata.ru/'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
-        
-        # Разрешаем редиректы
-        response = session.get(url, headers=headers, timeout=15, allow_redirects=True)
+
+        response = requests.get(url, headers=headers, timeout=15)
 
         if response.status_code != 200:
-            print(f"⚠️ Ошибка доступа к НРД: статус {response.status_code}")
-            print(f"📄 URL: {url}")
-            if len(response.text) > 200:
-                print(f"📝 Ответ (первые 200 симв): {response.text[:200]}")
-            else:
-                print(f"📝 Ответ: {response.text}")
             return f"⚠️ Сайт вернул статус {response.status_code}"
 
-        # Проверяем, не пустой ли ответ
-        if len(response.text) < 1000:
-            print(f"⚠️ Подозрительно маленький ответ: {len(response.text)} байт")
-            print(f"📝 Содержимое: {response.text[:500]}")
-
-        # ИСПОЛЬЗУЕМ BeautifulSoup для извлечения ВИДИМОГО ТЕКСТА
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Удаляем скрипты и стили
-        for script in soup(["script", "style", "nav", "header", "footer"]):
-            script.decompose()
-        
-        # Получаем чистый текст
-        visible_text = soup.get_text(separator=' ', strip=True)
-        
-        if len(visible_text) < 100:
-            print(f"⚠️ Очень мало текста на странице: {len(visible_text)} символов")
-        
-        return {
-            'text': visible_text,
-            'html': response.text
-        }
+        # ВОЗВРАЩАЕМ СЫРОЙ HTML ТЕКСТ для поиска
+        return response.text
 
     except Exception as e:
-        print(f"⚠️ Исключение при парсинге: {e}")
-        import traceback
-        traceback.print_exc()
         return f"❌ Ошибка парсинга: {str(e)[:150]}"
 
 def check_intr_status(issuers_list):
@@ -214,97 +152,36 @@ def check_intr_status(issuers_list):
             from_date = (today - timedelta(days=7)).strftime("%d.%m.%Y")
             to_date = today.strftime("%d.%m.%Y")
             
-            result = parse_nsd_news_by_isin(isin_moex, from_date, to_date)
+            news_text = parse_nsd_news_by_isin(isin_moex, from_date, to_date)
+            print(f"🔍 Проверка ISIN: {isin_moex}")
+            print(f"📰 Новости НРД: {news_text[:500]}...")  # Первые 500 символов для отладки
             
-            # Проверяем, что получили словарь, а не строку ошибки
-            if isinstance(result, str):
-                print(f"⚠️ Ошибка получения данных: {result}")
-                intr_status[isin_moex] = {
-                    'has_intr': False,
-                    'issuer': issuer,
-                    'record_date': None,
-                    'coupon_date': coupon_date,
-                    'status_details': f"❌ {result}"
-                }
-                continue
+            # ДОБАВИМ ОТЛАДОЧНУЮ ИНФОРМАЦИЮ
+            print(f"🔍 ISIN в тексте: {isin_moex in news_text}")
+            print(f"🔍 'Выплата купонного дохода' в тексте: {'Выплата купонного дохода' in news_text}")
+            print(f"🔍 '(INTR)' в тексте: {'(INTR)' in news_text}")
             
-            news_text = result['text']
-            news_html = result['html']
-            
-            print(f"\n🔍 === Проверка ISIN: {isin_moex} ===")
-            print(f"📄 Длина текста: {len(news_text)} символов")
-            
-            # Ищем ISIN в тексте
-            isin_found = isin_moex in news_text
-            print(f"🔍 ISIN в тексте: {isin_found}")
-            
-            # Ищем различные варианты упоминания выплаты
-            variants = [
-                "Выплата купонного дохода",
-                "выплата купонного дохода",
-                "INTR",
-                "(INTR)",
-                "INTR"
-            ]
-            
-            for variant in variants:
-                if variant in news_text:
-                    print(f"✅ Найдено: '{variant}'")
-            
-            # УЛУЧШЕННЫЙ ПОИСК INTR
-            # Ищем паттерн: дата + INTR + выплата купонного дохода
-            # Варианты формата:
-            # 02.07.2026 (INTR) (Выплата купонного дохода)
-            # 02.07.2026(INTR)
-            # 02.07.2026 (INTR)
-            
-            # Сначала ищем ISIN + INTR + выплата
-            if isin_moex in news_text:
-                # Ищем дату перед или после ISIN
-                # Паттерн 1: DD.MM.YYYY (INTR)
-                date_intr_pattern = r'(\d{2}\.\d{2}\.\d{4})\s*\(?\s*INTR\s*\)?'
-                date_matches = re.findall(date_intr_pattern, news_text)
+            # ПРОСТАЯ И НАДЕЖНАЯ ПРОВЕРКА
+            if isin_moex in news_text and "Выплата купонного дохода" in news_text:
+                # Ищем дату INTR
+                intr_date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})\(INTR\)', news_text)
+                print(f"🔍 Дата INTR найдена: {intr_date_match}")
                 
-                if date_matches:
-                    print(f"✅ Найдены даты с INTR: {date_matches}")
-                    # Берем последнюю найденную дату
-                    record_date = date_matches[-1]
+                if intr_date_match:
+                    record_date = intr_date_match.group(1)
                     has_intr = True
-                    
-                    # Проверяем, есть ли упоминание выплаты купона
-                    if "купон" in news_text.lower() or "coupon" in news_text.lower():
-                        status_details = f"ℹ️ INTR был {record_date}, выплата купона подтверждена"
-                    else:
-                        status_details = f"ℹ️ INTR найден от {record_date}"
+                    status_details = f"ℹ️ INTR был {record_date}, деньги поступили для выплаты"
                 else:
-                    # Если INTR есть, но без даты - тоже считаем найденным
-                    if "INTR" in news_text or "(INTR)" in news_text:
-                        has_intr = True
-                        record_date = "дата не определена"
-                        status_details = "ℹ️ INTR найден (дата не определена)"
-                    else:
-                        has_intr = False
-                        status_details = "ℹ️ INTR не найден в НРД"
+                    # Если дату не нашли, но ISIN и выплата есть - все равно считаем INTR пройденным
+                    has_intr = True
+                    record_date = "дата не определена"
+                    status_details = f"ℹ️ INTR найден, деньги поступили для выплаты"
             else:
                 has_intr = False
-                status_details = "ℹ️ ISIN не найден в новостях НРД"
+                record_date = None
+                status_details = "ℹ️ INTR не найден в НРД"
             
-            # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА - ищем в HTML
-            if not has_intr and isin_moex in news_html:
-                print(f"⚠️ ISIN найден в HTML, но не в тексте. Проверяем HTML...")
-                # Ищем в HTML тегах
-                soup = BeautifulSoup(news_html, 'html.parser')
-                # Ищем элементы с классом или текстом содержащим INTR
-                intr_elements = soup.find_all(string=re.compile(r'INTR', re.IGNORECASE))
-                if intr_elements:
-                    print(f"✅ Найдено {len(intr_elements)} элементов с INTR в HTML")
-                    has_intr = True
-                    record_date = "найдено в HTML"
-                    status_details = "ℹ️ INTR найден в HTML структуре"
-            
-            print(f"🎯 Итоговый статус: has_intr = {has_intr}, record_date = {record_date}")
-            print(f"📝 Status details: {status_details}")
-            print("=" * 50 + "\n")
+            print(f"🔍 Итоговый статус: has_intr = {has_intr}")
             
             intr_status[isin_moex] = {
                 'has_intr': has_intr,
@@ -316,8 +193,6 @@ def check_intr_status(issuers_list):
                 
         except Exception as e:
             print(f"⚠️ Ошибка проверки INTR для {issuer} ({isin_moex}): {e}")
-            import traceback
-            traceback.print_exc()
             intr_status[isin_moex] = {
                 'has_intr': False,
                 'issuer': issuer,
