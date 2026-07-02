@@ -109,72 +109,71 @@ def extract_issuer_name(bond_name):
         return ""
 
 def parse_nsd_news_by_isin(isin, from_date, to_date):
-    """Парсинг новостей с сайта НРД по ISIN с использованием cloudscraper"""
+    """Парсинг новостей с сайта НРД по ISIN с использованием Selenium"""
     if not isin:
         return "❌ ISIN отсутствует"
 
     try:
-        import cloudscraper
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.by import By
         
         encoded_isin = requests.utils.quote(isin)
         url = f"https://nsddata.ru/ru/news?text={encoded_isin}&from={from_date}&to={to_date}"
 
-        # Создаем scraper для обхода защиты
-        scraper = cloudscraper.create_scraper(
-            browser={
-                'browser': 'chrome',
-                'platform': 'windows',
-                'mobile': False
+        # Настройки Chrome
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')  # Без GUI
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        # Инициализируем драйвер
+        print(f"🌐 Запуск браузера для {isin}...")
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        try:
+            # Загружаем страницу
+            driver.get(url)
+            
+            # Ждем загрузки контента (до 20 секунд)
+            WebDriverWait(driver, 20).until(
+                lambda d: len(d.find_element(By.TAG_NAME, "body").text) > 500
+            )
+            
+            # Получаем HTML страницы
+            html = driver.page_source
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Удаляем скрипты и стили
+            for script in soup(["script", "style", "nav", "header", "footer"]):
+                script.decompose()
+            
+            visible_text = soup.get_text(separator=' ', strip=True)
+            
+            print(f"✅ Получено {len(visible_text)} символов текста через Selenium")
+            
+            return {
+                'text': visible_text,
+                'html': html
             }
-        )
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-            'Referer': 'https://nsddata.ru/'
-        }
-        
-        # Делаем запрос с задержкой
-        time.sleep(2)  # Пауза перед запросом
-        
-        response = scraper.get(url, headers=headers, timeout=20)
+            
+        finally:
+            driver.quit()
 
-        if response.status_code != 200:
-            print(f"⚠️ Ошибка доступа к НРД: статус {response.status_code}")
-            print(f"📄 URL: {url}")
-            print(f"📝 Ответ (первые 300 симв): {response.text[:300]}")
-            return f"⚠️ Сайт вернул статус {response.status_code}"
-
-        # Проверяем, не пустой ли ответ
-        if len(response.text) < 1000:
-            print(f"⚠️ Подозрительно маленький ответ: {len(response.text)} байт")
-            print(f"📝 Содержимое: {response.text[:500]}")
-
-        # ИСПОЛЬЗУЕМ BeautifulSoup для извлечения ВИДИМОГО ТЕКСТА
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Удаляем скрипты и стили
-        for script in soup(["script", "style", "nav", "header", "footer"]):
-            script.decompose()
-        
-        # Получаем чистый текст
-        visible_text = soup.get_text(separator=' ', strip=True)
-        
-        print(f"✅ Получено {len(visible_text)} символов текста")
-        
-        return {
-            'text': visible_text,
-            'html': response.text
-        }
-
-    except ImportError:
-        print("❌ Библиотека cloudscraper не установлена. Выполните: pip install cloudscraper")
-        return "❌ Требуется установка cloudscraper"
+    except ImportError as e:
+        print(f"❌ Не найдена библиотека: {e}")
+        print("Установите: pip install selenium webdriver-manager")
+        return f"❌ Ошибка импорта: {str(e)[:100]}"
     except Exception as e:
-        print(f"⚠️ Исключение при парсинге: {e}")
+        print(f"⚠️ Исключение при парсинге через Selenium: {e}")
         import traceback
         traceback.print_exc()
         return f"❌ Ошибка парсинга: {str(e)[:150]}"
