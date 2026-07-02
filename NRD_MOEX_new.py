@@ -8,6 +8,7 @@ import webbrowser
 import time
 from dotenv import load_dotenv
 import sys
+import cloudscraper
 """Добавлен в GIT HAB 15.06.26"""
 """
 NRD_MOEX_new.py - Система мониторинга выплат по облигациям
