@@ -108,60 +108,43 @@ def extract_issuer_name(bond_name):
         return ""
 
 def parse_nsd_news_by_isin(isin, from_date, to_date):
-    """Парсинг новостей с сайта НРД по ISIN с поддержкой сессий"""
+    """Парсинг новостей с сайта НРД по ISIN с использованием cloudscraper"""
     if not isin:
         return "❌ ISIN отсутствует"
 
     try:
+        import cloudscraper
+        
         encoded_isin = requests.utils.quote(isin)
         url = f"https://nsddata.ru/ru/news?text={encoded_isin}&from={from_date}&to={to_date}"
 
-        # Создаем сессию
-        session = requests.Session()
+        # Создаем scraper для обхода защиты
+        scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'mobile': False
+            }
+        )
         
-        # Сначала заходим на главную страницу чтобы получить cookies
-        main_url = "https://nsddata.ru/"
-        headers_main = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        }
-        
-        # Делаем запрос на главную для получения cookies
-        try:
-            session.get(main_url, headers=headers_main, timeout=10)
-            time.sleep(1)  # Небольшая пауза
-        except:
-            pass  # Игнорируем ошибки на этом этапе
-        
-        # Теперь делаем основной запрос
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Dest': 'document',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin',
-            'Cache-Control': 'max-age=0',
             'Referer': 'https://nsddata.ru/'
         }
         
-        # Разрешаем редиректы
-        response = session.get(url, headers=headers, timeout=15, allow_redirects=True)
+        # Делаем запрос с задержкой
+        time.sleep(2)  # Пауза перед запросом
+        
+        response = scraper.get(url, headers=headers, timeout=20)
 
         if response.status_code != 200:
             print(f"⚠️ Ошибка доступа к НРД: статус {response.status_code}")
             print(f"📄 URL: {url}")
-            if len(response.text) > 200:
-                print(f"📝 Ответ (первые 200 симв): {response.text[:200]}")
-            else:
-                print(f"📝 Ответ: {response.text}")
+            print(f"📝 Ответ (первые 300 симв): {response.text[:300]}")
             return f"⚠️ Сайт вернул статус {response.status_code}"
 
         # Проверяем, не пустой ли ответ
@@ -179,14 +162,16 @@ def parse_nsd_news_by_isin(isin, from_date, to_date):
         # Получаем чистый текст
         visible_text = soup.get_text(separator=' ', strip=True)
         
-        if len(visible_text) < 100:
-            print(f"⚠️ Очень мало текста на странице: {len(visible_text)} символов")
+        print(f"✅ Получено {len(visible_text)} символов текста")
         
         return {
             'text': visible_text,
             'html': response.text
         }
 
+    except ImportError:
+        print("❌ Библиотека cloudscraper не установлена. Выполните: pip install cloudscraper")
+        return "❌ Требуется установка cloudscraper"
     except Exception as e:
         print(f"⚠️ Исключение при парсинге: {e}")
         import traceback
