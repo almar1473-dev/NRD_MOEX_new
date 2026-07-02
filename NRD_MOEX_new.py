@@ -117,9 +117,7 @@ def parse_nsd_news_by_isin(isin, from_date, to_date):
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
         from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.common.by import By
         
         encoded_isin = requests.utils.quote(isin)
@@ -127,17 +125,43 @@ def parse_nsd_news_by_isin(isin, from_date, to_date):
 
         # Настройки Chrome
         chrome_options = Options()
-        chrome_options.add_argument('--headless')  # Без GUI
+        chrome_options.add_argument('--headless')
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--window-size=1920,1080')
         chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # Инициализируем драйвер
+        # Пробуем найти chromium
+        import shutil
+        chromium_path = shutil.which('chromium-browser') or shutil.which('chromium') or shutil.which('google-chrome')
+        
+        if chromium_path:
+            chrome_options.binary_location = chromium_path
+            print(f"🌐 Найден браузер: {chromium_path}")
+        
         print(f"🌐 Запуск браузера для {isin}...")
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # Пробуем разные варианты запуска
+        driver = None
+        try:
+            # Вариант 1: через webdriver-manager
+            from webdriver_manager.chrome import ChromeDriverManager
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+        except Exception as e1:
+            print(f"⚠️ webdriver-manager не сработал: {e1}")
+            try:
+                # Вариант 2: системный chromedriver
+                driver = webdriver.Chrome(options=chrome_options)
+            except Exception as e2:
+                print(f"⚠️ Системный chromedriver не сработал: {e2}")
+                # Вариант 3: явно указываем путь
+                service = Service('/usr/bin/chromedriver')
+                driver = webdriver.Chrome(service=service, options=chrome_options)
         
         try:
             # Загружаем страницу
@@ -170,7 +194,6 @@ def parse_nsd_news_by_isin(isin, from_date, to_date):
 
     except ImportError as e:
         print(f"❌ Не найдена библиотека: {e}")
-        print("Установите: pip install selenium webdriver-manager")
         return f"❌ Ошибка импорта: {str(e)[:100]}"
     except Exception as e:
         print(f"⚠️ Исключение при парсинге через Selenium: {e}")
